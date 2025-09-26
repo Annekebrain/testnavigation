@@ -120,7 +120,7 @@ export const ARCamera: React.FC<ARCameraProps> = ({
         stream.getTracks().forEach(track => track.stop());
       }
     };
-  }, [onCameraReady]);
+  }, [onCameraReady, deviceInfo]);
 
   const adjustedBearing = bearing - deviceHeading;
   
@@ -201,7 +201,6 @@ export const ARCamera: React.FC<ARCameraProps> = ({
         autoPlay
         playsInline
         webkit-playsinline="true"
-        playsInline
         muted
         controls={false}
         preload="none"
@@ -329,3 +328,4 @@ export const ARCamera: React.FC<ARCameraProps> = ({
       )}
     </div>
   );
+};
