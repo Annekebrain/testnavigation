@@ -23,6 +23,8 @@ function App() {
   });
 
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [showARView, setShowARView] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
   const [debugInfo, setDebugInfo] = useState('');
 
   // Debug information
@@ -232,43 +234,66 @@ function App() {
         </div>
       )}
 
-      <div className="max-w-md mx-auto">
-        {/* Game Status */}
-        <GameStatus
-          currentLocation={currentTarget}
-          visitedCount={gameState.visitedNodes.filter(Boolean).length}
-          totalLocations={GAME_LOCATIONS.length}
-          accuracy={position.coords.accuracy}
-        />
+      {/* AR/Map Toggle Button */}
+      <div className="fixed top-4 right-4 z-50">
+        <button
+          onClick={() => setShowARView(!showARView)}
+          className="bg-purple-600 hover:bg-purple-700 text-white p-3 rounded-full shadow-lg transition-all"
+        >
+          {showARView ? <MapPin className="w-6 h-6" /> : <Camera className="w-6 h-6" />}
+        </button>
+      </div>
 
-        {/* Compass */}
-        <div className="text-center mb-6">
-          <Compass
+      {showARView ? (
+        /* AR Camera View */
+        <div className="fixed inset-0 z-10">
+          <ARCamera
             bearing={bearing}
             distance={distance}
             deviceHeading={compassData.heading}
+            onCameraReady={setCameraReady}
           />
         </div>
+      ) : (
+        /* Map View */
+        <div className="max-w-md mx-auto">
+          {/* Game Status */}
+          <GameStatus
+            currentLocation={currentTarget}
+            visitedCount={gameState.visitedNodes.filter(Boolean).length}
+            totalLocations={GAME_LOCATIONS.length}
+            accuracy={position.coords.accuracy}
+          />
 
-        {/* Game Map */}
-        <GameMap
-          locations={GAME_LOCATIONS}
-          currentNodeIndex={gameState.currentNodeIndex}
-          visitedNodes={gameState.visitedNodes}
-          userLocation={position}
-        />
+          {/* Compass */}
+          <div className="text-center mb-6">
+            <Compass
+              bearing={bearing}
+              distance={distance}
+              deviceHeading={compassData.heading}
+            />
+          </div>
 
-        {/* Instructions */}
-        <div className="bg-black/30 rounded-lg p-4 mt-6 border border-purple-500/20">
-          <p className="text-sm text-gray-300 text-center">
-            Follow the compass and ghostly footsteps to reach the next location. 
-            Get within 25 meters to trigger the next clue.
-          </p>
+          {/* Game Map */}
+          <GameMap
+            locations={GAME_LOCATIONS}
+            currentNodeIndex={gameState.currentNodeIndex}
+            visitedNodes={gameState.visitedNodes}
+            userLocation={position}
+          />
+
+          {/* Instructions */}
+          <div className="bg-black/30 rounded-lg p-4 mt-6 border border-purple-500/20">
+            <p className="text-sm text-gray-300 text-center">
+              Follow the compass and ghostly footsteps to reach the next location. 
+              Get within 25 meters to trigger the next clue.
+            </p>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Footstep Trail Overlay */}
-      {distance > 30 && (
+      {!showARView && distance > 30 && (
         <FootstepTrail
           bearing={bearing}
           distance={distance}
