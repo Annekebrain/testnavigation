@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Smartphone, AlertTriangle, Trophy, MapPin } from 'lucide-react';
+import { Play, Smartphone, AlertTriangle, Trophy, MapPin, Camera } from 'lucide-react';
 import { useGeolocation } from './hooks/useGeolocation';
 import { useDeviceOrientation } from './hooks/useDeviceOrientation';
 import { GameStatus } from './components/GameStatus';
