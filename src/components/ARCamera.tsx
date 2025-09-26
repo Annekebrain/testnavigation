@@ -1,20 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Camera, CameraOff, AlertCircle, Smartphone } from 'lucide-react';
 
-// Mobile device detection
-const isMobile = () => {
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-};
-
-const isIOS = () => {
-  return /iPad|iPhone|iPod/.test(navigator.userAgent) || 
-         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-};
-
-const isAndroid = () => {
-  return /Android/i.test(navigator.userAgent);
-};
-
 interface ARCameraProps {
   bearing: number;
   distance: number;
@@ -31,82 +17,57 @@ export const ARCamera: React.FC<ARCameraProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [permissionRequested, setPermissionRequested] = useState(false);
-  const [deviceInfo, setDeviceInfo] = useState<string>('');
-
-  // Set device info for debugging
-  useEffect(() => {
-    const info = `${isIOS() ? 'iOS' : isAndroid() ? 'Android' : 'Desktop'} - ${navigator.userAgent.substring(0, 50)}...`;
-    setDeviceInfo(info);
-  }, []);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const startCamera = async () => {
-      setPermissionRequested(true);
+      setIsLoading(true);
+      setCameraError(null);
+      
       try {
-        // Check if camera is available
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
           throw new Error('Camera not supported by this browser');
         }
 
-        // Different constraints for different devices
-        const constraints = {
-          video: {
-            facingMode: 'environment', // Use back camera
-            width: { 
-              ideal: isIOS() ? 1920 : 1280,
-              max: 1920 
-            },
-            height: { 
-              ideal: isIOS() ? 1080 : 720,
-              max: 1080 
-            },
-            frameRate: { 
-              ideal: isMobile() ? 24 : 30,
-              max: 30 
-            }
-          }
-        };
-
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: constraints.video
+          video: {
+            facingMode: 'environment',
+            width: { ideal: 1280, max: 1920 },
+            height: { ideal: 720, max: 1080 }
+          }
         });
         
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
+          videoRef.current.setAttribute('playsinline', 'true');
+          videoRef.current.muted = true;
           
-          // iOS specific video setup
-          if (isIOS()) {
-            videoRef.current.setAttribute('playsinline', 'true');
-            videoRef.current.setAttribute('webkit-playsinline', 'true');
-            videoRef.current.muted = true;
-          }
-          
-          videoRef.current.onloadedmetadata = () => {
-            videoRef.current?.play().catch(error => {
+          videoRef.current.onloadedmetadata = async () => {
+            try {
+              await videoRef.current?.play();
+              setCameraActive(true);
+              setIsLoading(false);
+              onCameraReady(true);
+            } catch (error) {
               console.error('Video play failed:', error);
               setCameraError('Failed to start video playback');
-            });
+              setIsLoading(false);
+            }
           };
-          
-          setCameraActive(true);
-          setCameraError(null);
-          onCameraReady(true);
         }
       } catch (error) {
         console.error('Camera access failed:', error);
+        setIsLoading(false);
         if (error instanceof Error) {
           if (error.name === 'NotAllowedError') {
             setCameraError('Camera access denied. Please allow camera access and try again.');
           } else if (error.name === 'NotFoundError') {
             setCameraError('No camera found on this device.');
-          } else if (error.name === 'NotSupportedError') {
-            setCameraError('Camera not supported by this browser.');
           } else {
-            setCameraError(`Camera error: ${error.message}. Device: ${isIOS() ? 'iOS' : isAndroid() ? 'Android' : 'Other'}`);
+            setCameraError(`Camera error: ${error.message}`);
           }
         } else {
-          setCameraError(`Unknown camera error. Device: ${deviceInfo}`);
+          setCameraError('Unknown camera error occurred');
         }
         onCameraReady(false);
       }
@@ -120,11 +81,10 @@ export const ARCamera: React.FC<ARCameraProps> = ({
         stream.getTracks().forEach(track => track.stop());
       }
     };
-  }, [onCameraReady, deviceInfo]);
+  }, [onCameraReady]);
 
   const adjustedBearing = bearing - deviceHeading;
   
-  // Calculate footstep positions based on distance and bearing
   const getFootstepPosition = (stepIndex: number) => {
     const baseDistance = Math.min(distance, 100); // Cap at 100m for visibility
     const stepDistance = 5 + (stepIndex * 8); // Steps every 8 meters starting at 5m
@@ -132,15 +92,12 @@ export const ARCamera: React.FC<ARCameraProps> = ({
     
     if (stepIndex >= maxSteps) return null;
     
-    // Convert bearing to screen position
     const screenCenterX = 50; // Center of screen
     const screenCenterY = 70; // Lower center for ground level
     
-    // Calculate horizontal offset based on bearing (-90 to 90 degrees visible)
     const bearingOffset = Math.max(-45, Math.min(45, adjustedBearing));
     const horizontalOffset = (bearingOffset / 45) * 30; // Max 30% offset from center
     
-    // Calculate depth (distance from camera)
     const depthFactor = stepDistance / 50; // Normalize to 0-2 range
     const verticalOffset = depthFactor * 10; // Move up as distance increases (perspective)
     const scale = Math.max(0.3, 1 - (depthFactor * 0.4)); // Smaller as distance increases
@@ -162,32 +119,27 @@ export const ARCamera: React.FC<ARCameraProps> = ({
           <p className="text-gray-300 text-sm mb-4">
             {cameraError}
           </p>
-          
-          {/* Device-specific instructions */}
-          {isIOS() && (
-            <div className="bg-blue-900/30 p-3 rounded-lg mb-4 text-xs text-blue-300">
-              <Smartphone className="w-4 h-4 inline mr-1" />
-              iOS: Make sure Safari has camera permission in Settings → Privacy & Security → Camera
-            </div>
-          )}
-          
-          {isAndroid() && (
-            <div className="bg-green-900/30 p-3 rounded-lg mb-4 text-xs text-green-300">
-              <Smartphone className="w-4 h-4 inline mr-1" />
-              Android: Allow camera access when prompted, or check browser permissions in settings
-            </div>
-          )}
-          
           <button
             onClick={() => {
               setCameraError(null);
-              setPermissionRequested(false);
+              setIsLoading(true);
             }}
             className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition-colors"
           >
             Try Again
           </button>
-          <p className="text-xs text-gray-500 mt-2">{deviceInfo}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="relative w-full h-full bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <Camera className="w-16 h-16 text-cyan-400 mx-auto mb-4 animate-pulse" />
+          <p className="text-cyan-400 mb-2">Starting camera...</p>
+          <p className="text-gray-400 text-sm">Please allow camera access when prompted</p>
         </div>
       </div>
     );
@@ -200,10 +152,7 @@ export const ARCamera: React.FC<ARCameraProps> = ({
         ref={videoRef}
         autoPlay
         playsInline
-        webkit-playsinline="true"
         muted
-        controls={false}
-        preload="none"
         className="absolute inset-0 w-full h-full object-cover bg-black"
       />
       
@@ -227,7 +176,6 @@ export const ARCamera: React.FC<ARCameraProps> = ({
                   animationDuration: '2s'
                 }}
               >
-                {/* 3D-style footstep */}
                 <div className="relative">
                   <svg 
                     width="40" 
@@ -235,7 +183,6 @@ export const ARCamera: React.FC<ARCameraProps> = ({
                     viewBox="0 0 40 60" 
                     className="drop-shadow-2xl"
                   >
-                    {/* Shadow/ground projection */}
                     <ellipse 
                       cx="20" 
                       cy="55" 
@@ -243,40 +190,18 @@ export const ARCamera: React.FC<ARCameraProps> = ({
                       ry="4" 
                       fill="rgba(0,0,0,0.3)"
                     />
-                    {/* Main footprint */}
                     <path
                       d="M20 10 C25 10, 30 15, 30 25 C30 35, 25 45, 20 50 C15 45, 10 35, 10 25 C10 15, 15 10, 20 10 Z"
                       fill="rgba(6, 182, 212, 0.8)"
                       stroke="rgba(6, 182, 212, 1)"
                       strokeWidth="2"
                     />
-                    {/* Toe marks */}
                     <circle cx="16" cy="20" r="2" fill="rgba(6, 182, 212, 0.9)" />
                     <circle cx="20" cy="18" r="2" fill="rgba(6, 182, 212, 0.9)" />
                     <circle cx="24" cy="20" r="2" fill="rgba(6, 182, 212, 0.9)" />
-                    {/* Heel */}
                     <ellipse cx="20" cy="40" rx="6" ry="8" fill="rgba(6, 182, 212, 0.7)" />
-                    
-                    {/* Glowing effect */}
-                    <defs>
-                      <filter id={`glow-${i}`}>
-                        <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
-                        <feMerge> 
-                          <feMergeNode in="coloredBlur"/>
-                          <feMergeNode in="SourceGraphic"/>
-                        </feMerge>
-                      </filter>
-                    </defs>
-                    <path
-                      d="M20 10 C25 10, 30 15, 30 25 C30 35, 25 45, 20 50 C15 45, 10 35, 10 25 C10 15, 15 10, 20 10 Z"
-                      fill="none"
-                      stroke="rgba(6, 182, 212, 0.6)"
-                      strokeWidth="1"
-                      filter={`url(#glow-${i})`}
-                    />
                   </svg>
                   
-                  {/* Distance indicator for closest footstep */}
                   {i === 0 && (
                     <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-black/70 text-cyan-400 text-xs px-2 py-1 rounded whitespace-nowrap">
                       {(5 + (i * 8))}m ahead
@@ -289,7 +214,6 @@ export const ARCamera: React.FC<ARCameraProps> = ({
         </div>
       )}
       
-      {/* Direction indicator */}
       {cameraActive && (
         <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-black/70 text-cyan-400 px-4 py-2 rounded-full">
           <div className="flex items-center space-x-2">
@@ -298,31 +222,6 @@ export const ARCamera: React.FC<ARCameraProps> = ({
               style={{ transform: `rotate(${adjustedBearing + 45}deg)` }}
             />
             <span className="text-sm font-bold">{distance.toFixed(0)}m</span>
-          </div>
-        </div>
-      )}
-      
-      {/* Camera loading indicator */}
-      {!cameraActive && !cameraError && permissionRequested && (
-        <div className="absolute inset-0 bg-gray-900 flex items-center justify-center">
-          <div className="text-center">
-            <Camera className="w-16 h-16 text-cyan-400 mx-auto mb-4 animate-pulse" />
-            <p className="text-cyan-400 mb-2">Starting AR camera...</p>
-            <p className="text-gray-400 text-sm">Please allow camera access when prompted</p>
-          </div>
-        </div>
-      )}
-      
-      {/* Initial state - before permission request */}
-      {!permissionRequested && !cameraActive && !cameraError && (
-        <div className="absolute inset-0 bg-gray-900 flex items-center justify-center">
-          <div className="text-center p-6 max-w-sm">
-            <Camera className="w-16 h-16 text-cyan-400 mx-auto mb-4" />
-            <h3 className="text-lg font-bold text-cyan-400 mb-2">AR Mode Ready</h3>
-            <p className="text-gray-300 text-sm">
-              Camera will start automatically to show AR footsteps
-            </p>
-            <p className="text-xs text-gray-500 mt-2">Device: {isIOS() ? 'iOS' : isAndroid() ? 'Android' : 'Desktop'}</p>
           </div>
         </div>
       )}
