@@ -30,6 +30,7 @@ function App() {
   const { position, error, loading } = useGeolocation();
   const { compassData, supported, requestPermission, permissionRequested, permissionDenied, isIOS: deviceIsIOS } = useDeviceOrientation();
   
+  const [debugInfo, setDebugInfo] = useState('');
   const [gameState, setGameState] = useState<GameState>({
     currentNodeIndex: 0,
     visitedNodes: new Array(GAME_LOCATIONS.length).fill(false),
