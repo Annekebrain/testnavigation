@@ -1,5 +1,19 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Camera, CameraOff, AlertCircle } from 'lucide-react';
+import { Camera, CameraOff, AlertCircle, Smartphone } from 'lucide-react';
+
+// Mobile device detection
+const isMobile = () => {
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+};
+
+const isIOS = () => {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+};
+
+const isAndroid = () => {
+  return /Android/i.test(navigator.userAgent);
+};
 
 interface ARCameraProps {
   bearing: number;
@@ -18,25 +32,63 @@ export const ARCamera: React.FC<ARCameraProps> = ({
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [permissionRequested, setPermissionRequested] = useState(false);
+  const [deviceInfo, setDeviceInfo] = useState<string>('');
+
+  // Set device info for debugging
+  useEffect(() => {
+    const info = `${isIOS() ? 'iOS' : isAndroid() ? 'Android' : 'Desktop'} - ${navigator.userAgent.substring(0, 50)}...`;
+    setDeviceInfo(info);
+  }, []);
 
   useEffect(() => {
     const startCamera = async () => {
       setPermissionRequested(true);
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
+        // Check if camera is available
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error('Camera not supported by this browser');
+        }
+
+        // Different constraints for different devices
+        const constraints = {
           video: {
             facingMode: 'environment', // Use back camera
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            frameRate: { ideal: 30 }
+            width: { 
+              ideal: isIOS() ? 1920 : 1280,
+              max: 1920 
+            },
+            height: { 
+              ideal: isIOS() ? 1080 : 720,
+              max: 1080 
+            },
+            frameRate: { 
+              ideal: isMobile() ? 24 : 30,
+              max: 30 
+            }
           }
+        };
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: constraints.video
         });
         
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
+          
+          // iOS specific video setup
+          if (isIOS()) {
+            videoRef.current.setAttribute('playsinline', 'true');
+            videoRef.current.setAttribute('webkit-playsinline', 'true');
+            videoRef.current.muted = true;
+          }
+          
           videoRef.current.onloadedmetadata = () => {
-            videoRef.current?.play();
+            videoRef.current?.play().catch(error => {
+              console.error('Video play failed:', error);
+              setCameraError('Failed to start video playback');
+            });
           };
+          
           setCameraActive(true);
           setCameraError(null);
           onCameraReady(true);
@@ -51,10 +103,10 @@ export const ARCamera: React.FC<ARCameraProps> = ({
           } else if (error.name === 'NotSupportedError') {
             setCameraError('Camera not supported by this browser.');
           } else {
-            setCameraError(`Camera error: ${error.message}`);
+            setCameraError(`Camera error: ${error.message}. Device: ${isIOS() ? 'iOS' : isAndroid() ? 'Android' : 'Other'}`);
           }
         } else {
-          setCameraError('Unknown camera error occurred.');
+          setCameraError(`Unknown camera error. Device: ${deviceInfo}`);
         }
         onCameraReady(false);
       }
@@ -104,12 +156,28 @@ export const ARCamera: React.FC<ARCameraProps> = ({
   if (cameraError) {
     return (
       <div className="relative w-full h-full bg-gray-900 flex items-center justify-center">
-        <div className="text-center p-6">
+        <div className="text-center p-6 max-w-sm">
           <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
           <h3 className="text-lg font-bold text-red-400 mb-2">Camera Access Required</h3>
           <p className="text-gray-300 text-sm mb-4">
             {cameraError}
           </p>
+          
+          {/* Device-specific instructions */}
+          {isIOS() && (
+            <div className="bg-blue-900/30 p-3 rounded-lg mb-4 text-xs text-blue-300">
+              <Smartphone className="w-4 h-4 inline mr-1" />
+              iOS: Make sure Safari has camera permission in Settings → Privacy & Security → Camera
+            </div>
+          )}
+          
+          {isAndroid() && (
+            <div className="bg-green-900/30 p-3 rounded-lg mb-4 text-xs text-green-300">
+              <Smartphone className="w-4 h-4 inline mr-1" />
+              Android: Allow camera access when prompted, or check browser permissions in settings
+            </div>
+          )}
+          
           <button
             onClick={() => {
               setCameraError(null);
@@ -119,6 +187,7 @@ export const ARCamera: React.FC<ARCameraProps> = ({
           >
             Try Again
           </button>
+          <p className="text-xs text-gray-500 mt-2">{deviceInfo}</p>
         </div>
       </div>
     );
@@ -131,7 +200,11 @@ export const ARCamera: React.FC<ARCameraProps> = ({
         ref={videoRef}
         autoPlay
         playsInline
+        webkit-playsinline="true"
+        playsInline
         muted
+        controls={false}
+        preload="none"
         className="absolute inset-0 w-full h-full object-cover bg-black"
       />
       
@@ -244,15 +317,15 @@ export const ARCamera: React.FC<ARCameraProps> = ({
       {/* Initial state - before permission request */}
       {!permissionRequested && !cameraActive && !cameraError && (
         <div className="absolute inset-0 bg-gray-900 flex items-center justify-center">
-          <div className="text-center p-6">
+          <div className="text-center p-6 max-w-sm">
             <Camera className="w-16 h-16 text-cyan-400 mx-auto mb-4" />
             <h3 className="text-lg font-bold text-cyan-400 mb-2">AR Mode Ready</h3>
             <p className="text-gray-300 text-sm">
               Camera will start automatically to show AR footsteps
             </p>
+            <p className="text-xs text-gray-500 mt-2">Device: {isIOS() ? 'iOS' : isAndroid() ? 'Android' : 'Desktop'}</p>
           </div>
         </div>
       )}
     </div>
   );
-};

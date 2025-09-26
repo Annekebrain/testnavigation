@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Smartphone, AlertTriangle, Trophy, MapPin, Camera } from 'lucide-react';
+import { Play, Smartphone, AlertTriangle, Trophy, MapPin, Camera, Wifi, WifiOff } from 'lucide-react';
 import { useGeolocation } from './hooks/useGeolocation';
 import { useDeviceOrientation } from './hooks/useDeviceOrientation';
 import { GameStatus } from './components/GameStatus';
@@ -10,9 +10,25 @@ import { GAME_LOCATIONS } from './data/locations';
 import { GameState } from './types';
 import { calculateDistance, calculateBearing, isNearLocation } from './utils/geolocation';
 
+// Mobile compatibility checks
+const isMobile = () => {
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+};
+
+const isIOS = () => {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+};
+
+const hasRequiredAPIs = () => {
+  return 'geolocation' in navigator && 
+         'mediaDevices' in navigator && 
+         'getUserMedia' in navigator.mediaDevices;
+};
+
 function App() {
   const { position, error, loading } = useGeolocation();
-  const { compassData, supported, requestPermission, permissionRequested } = useDeviceOrientation();
+  const { compassData, supported, requestPermission, permissionRequested, permissionDenied, isIOS: deviceIsIOS } = useDeviceOrientation();
   
   const [gameState, setGameState] = useState<GameState>({
     currentNodeIndex: 0,
@@ -25,7 +41,8 @@ function App() {
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [showARView, setShowARView] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
-  const [debugInfo, setDebugInfo] = useState('');
+  const [compatibilityChecked, setCompatibilityChecked] = useState(false);
+  const [compatibilityIssues, setCompatibilityIssues] = useState<string[]>([]);
 
   // Debug information
   useEffect(() => {
@@ -39,6 +56,26 @@ function App() {
     ].join('\n');
     setDebugInfo(info);
   }, [loading, position, error, supported, permissionRequested, gameState.gameStarted]);
+
+  // Compatibility check
+  useEffect(() => {
+    const issues: string[] = [];
+    
+    if (!isMobile()) {
+      issues.push('This app is designed for mobile devices');
+    }
+    
+    if (!hasRequiredAPIs()) {
+      issues.push('Browser missing required APIs (GPS/Camera)');
+    }
+    
+    if (!('DeviceOrientationEvent' in window)) {
+      issues.push('Device orientation not supported');
+    }
+    
+    setCompatibilityIssues(issues);
+    setCompatibilityChecked(true);
+  }, []);
 
   // Update user location
   useEffect(() => {
@@ -78,7 +115,7 @@ function App() {
 
   const startGame = async () => {
     try {
-      // For iOS devices, request permission first
+      // For iOS devices, request orientation permission first
       if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
         await requestPermission();
       }
@@ -100,15 +137,38 @@ function App() {
     });
   };
 
+  // Show compatibility warnings before game starts
+  if (compatibilityChecked && compatibilityIssues.length > 0 && !gameState.gameStarted) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black flex items-center justify-center p-4">
+        <div className="text-center max-w-md">
+          <AlertTriangle className="w-16 h-16 text-yellow-400 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-yellow-400 mb-4">Compatibility Notice</h2>
+          <div className="bg-yellow-900/30 rounded-lg p-4 mb-4">
+            {compatibilityIssues.map((issue, index) => (
+              <p key={index} className="text-yellow-300 text-sm mb-2">• {issue}</p>
+            ))}
+          </div>
+          <p className="text-gray-300 text-sm mb-4">
+            The app may not work optimally on this device. For best experience, use a mobile device with GPS and camera support.
+          </p>
+          <button
+            onClick={() => setCompatibilityIssues([])}
+            className="bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 px-6 rounded-lg transition-colors"
+          >
+            Continue Anyway
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black flex items-center justify-center">
         <div className="text-center p-4">
           <div className="animate-spin w-12 h-12 border-4 border-cyan-400 border-t-transparent rounded-full mx-auto mb-4"></div>
           <p className="text-cyan-400 text-lg">Finding your location...</p>
-          <div className="mt-4 text-xs text-gray-400 whitespace-pre-line bg-black/30 p-3 rounded">
-            {debugInfo}
-          </div>
         </div>
       </div>
     );
@@ -130,9 +190,6 @@ function App() {
           >
             Retry
           </button>
-          <div className="mt-4 text-xs text-gray-400 whitespace-pre-line bg-black/30 p-3 rounded">
-            {debugInfo}
-          </div>
         </div>
       </div>
     );
@@ -158,7 +215,22 @@ function App() {
             <ul className="text-sm text-gray-300 space-y-2">
               <li>• GPS/Location services enabled</li>
               <li>• Device orientation access</li>
+              <li>• Camera access for AR mode</li>
               <li>• Best played outdoors</li>
+            </ul>
+          </div>
+
+          {/* Device compatibility info */}
+          <div className="bg-black/30 rounded-lg p-4 mb-6 border border-green-500/30">
+            <div className="flex items-center justify-center mb-2">
+              {hasRequiredAPIs() ? <Wifi className="w-6 h-6 text-green-400" /> : <WifiOff className="w-6 h-6 text-red-400" />}
+            </div>
+            <h3 className="text-sm font-bold text-center mb-2">Device Status</h3>
+            <ul className="text-xs text-gray-300 space-y-1">
+              <li>• Device: {deviceIsIOS ? 'iOS' : isMobile() ? 'Mobile' : 'Desktop'}</li>
+              <li>• GPS: {position ? '✓ Ready' : '⏳ Waiting'}</li>
+              <li>• Compass: {supported ? '✓ Ready' : permissionDenied ? '✗ Denied' : '⏳ Pending'}</li>
+              <li>• Camera: {hasRequiredAPIs() ? '✓ Available' : '✗ Not supported'}</li>
               <li>• Walk between locations to progress</li>
             </ul>
           </div>
@@ -175,11 +247,6 @@ function App() {
               </p>
             </div>
           )}
-
-          {/* Debug info */}
-          <div className="mb-4 text-xs text-gray-400 whitespace-pre-line bg-black/30 p-3 rounded">
-            {debugInfo}
-          </div>
 
           <button
             onClick={startGame}

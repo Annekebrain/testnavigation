@@ -1,6 +1,16 @@
 import React from 'react';
 import { Navigation } from 'lucide-react';
 
+// Smooth bearing calculation to prevent compass jumping
+const smoothBearing = (newBearing: number, oldBearing: number, smoothingFactor: number = 0.3) => {
+  // Handle the 360/0 degree boundary
+  let diff = newBearing - oldBearing;
+  if (diff > 180) diff -= 360;
+  if (diff < -180) diff += 360;
+  
+  return oldBearing + (diff * smoothingFactor);
+};
+
 interface CompassProps {
   bearing: number;
   distance: number;
@@ -8,7 +18,12 @@ interface CompassProps {
 }
 
 export const Compass: React.FC<CompassProps> = ({ bearing, distance, deviceHeading }) => {
-  const adjustedBearing = bearing - deviceHeading;
+  const [smoothedBearing, setSmoothedBearing] = React.useState(bearing - deviceHeading);
+  
+  React.useEffect(() => {
+    const newAdjustedBearing = bearing - deviceHeading;
+    setSmoothedBearing(prev => smoothBearing(newAdjustedBearing, prev));
+  }, [bearing, deviceHeading]);
   
   return (
     <div className="relative w-32 h-32 mx-auto mb-6">
@@ -24,7 +39,7 @@ export const Compass: React.FC<CompassProps> = ({ bearing, distance, deviceHeadi
       {/* Direction arrow */}
       <div 
         className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 transition-transform duration-300"
-        style={{ transform: `translate(-50%, -50%) rotate(${adjustedBearing}deg)` }}
+        style={{ transform: `translate(-50%, -50%) rotate(${smoothedBearing}deg)` }}
       >
         <Navigation className="w-8 h-8 text-cyan-400 drop-shadow-lg" fill="currentColor" />
       </div>
