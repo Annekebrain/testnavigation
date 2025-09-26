@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Camera, CameraOff } from 'lucide-react';
+import { Camera, CameraOff, AlertCircle } from 'lucide-react';
 
 interface ARCameraProps {
   bearing: number;
@@ -17,26 +17,45 @@ export const ARCamera: React.FC<ARCameraProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [permissionRequested, setPermissionRequested] = useState(false);
 
   useEffect(() => {
     const startCamera = async () => {
+      setPermissionRequested(true);
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: 'environment', // Use back camera
             width: { ideal: 1280 },
-            height: { ideal: 720 }
+            height: { ideal: 720 },
+            frameRate: { ideal: 30 }
           }
         });
         
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
+          videoRef.current.onloadedmetadata = () => {
+            videoRef.current?.play();
+          };
           setCameraActive(true);
+          setCameraError(null);
           onCameraReady(true);
         }
       } catch (error) {
         console.error('Camera access failed:', error);
-        setCameraError('Camera access denied or not available');
+        if (error instanceof Error) {
+          if (error.name === 'NotAllowedError') {
+            setCameraError('Camera access denied. Please allow camera access and try again.');
+          } else if (error.name === 'NotFoundError') {
+            setCameraError('No camera found on this device.');
+          } else if (error.name === 'NotSupportedError') {
+            setCameraError('Camera not supported by this browser.');
+          } else {
+            setCameraError(`Camera error: ${error.message}`);
+          }
+        } else {
+          setCameraError('Unknown camera error occurred.');
+        }
         onCameraReady(false);
       }
     };
@@ -86,11 +105,20 @@ export const ARCamera: React.FC<ARCameraProps> = ({
     return (
       <div className="relative w-full h-full bg-gray-900 flex items-center justify-center">
         <div className="text-center p-6">
-          <CameraOff className="w-16 h-16 text-red-400 mx-auto mb-4" />
+          <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
           <h3 className="text-lg font-bold text-red-400 mb-2">Camera Access Required</h3>
-          <p className="text-gray-300 text-sm">
-            Enable camera access to see AR footsteps overlaid on the real world
+          <p className="text-gray-300 text-sm mb-4">
+            {cameraError}
           </p>
+          <button
+            onClick={() => {
+              setCameraError(null);
+              setPermissionRequested(false);
+            }}
+            className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition-colors"
+          >
+            Try Again
+          </button>
         </div>
       </div>
     );
@@ -104,7 +132,7 @@ export const ARCamera: React.FC<ARCameraProps> = ({
         autoPlay
         playsInline
         muted
-        className="absolute inset-0 w-full h-full object-cover"
+        className="absolute inset-0 w-full h-full object-cover bg-black"
       />
       
       {/* AR Footsteps overlay */}
@@ -203,11 +231,25 @@ export const ARCamera: React.FC<ARCameraProps> = ({
       )}
       
       {/* Camera loading indicator */}
-      {!cameraActive && !cameraError && (
+      {!cameraActive && !cameraError && permissionRequested && (
         <div className="absolute inset-0 bg-gray-900 flex items-center justify-center">
           <div className="text-center">
             <Camera className="w-16 h-16 text-cyan-400 mx-auto mb-4 animate-pulse" />
-            <p className="text-cyan-400">Starting AR camera...</p>
+            <p className="text-cyan-400 mb-2">Starting AR camera...</p>
+            <p className="text-gray-400 text-sm">Please allow camera access when prompted</p>
+          </div>
+        </div>
+      )}
+      
+      {/* Initial state - before permission request */}
+      {!permissionRequested && !cameraActive && !cameraError && (
+        <div className="absolute inset-0 bg-gray-900 flex items-center justify-center">
+          <div className="text-center p-6">
+            <Camera className="w-16 h-16 text-cyan-400 mx-auto mb-4" />
+            <h3 className="text-lg font-bold text-cyan-400 mb-2">AR Mode Ready</h3>
+            <p className="text-gray-300 text-sm">
+              Camera will start automatically to show AR footsteps
+            </p>
           </div>
         </div>
       )}
