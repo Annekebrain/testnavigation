@@ -4,6 +4,7 @@ import { CompassData } from '../types';
 export const useDeviceOrientation = () => {
   const [compassData, setCompassData] = useState<CompassData>({ heading: 0, accuracy: 0 });
   const [supported, setSupported] = useState(false);
+  const [permissionRequested, setPermissionRequested] = useState(false);
 
   useEffect(() => {
     const handleOrientation = (event: DeviceOrientationEvent) => {
@@ -15,28 +16,20 @@ export const useDeviceOrientation = () => {
       }
     };
 
-    const requestPermission = async () => {
+    const checkSupport = () => {
       if ('DeviceOrientationEvent' in window) {
-        // Check if permission is needed (iOS 13+)
-        if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
-          try {
-            const permission = await (DeviceOrientationEvent as any).requestPermission();
-            if (permission === 'granted') {
-              setSupported(true);
-              window.addEventListener('deviceorientation', handleOrientation);
-            }
-          } catch (error) {
-            console.error('Device orientation permission denied:', error);
-          }
-        } else {
-          // Non-iOS devices
+        if (typeof (DeviceOrientationEvent as any).requestPermission !== 'function') {
+          // Non-iOS devices - automatically supported
           setSupported(true);
           window.addEventListener('deviceorientation', handleOrientation);
+        } else {
+          // iOS devices - need permission
+          setSupported(false);
         }
       }
     };
 
-    requestPermission();
+    checkSupport();
 
     return () => {
       window.removeEventListener('deviceorientation', handleOrientation);
@@ -44,11 +37,20 @@ export const useDeviceOrientation = () => {
   }, []);
 
   const requestPermission = async () => {
+    setPermissionRequested(true);
     if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
       try {
         const permission = await (DeviceOrientationEvent as any).requestPermission();
         if (permission === 'granted') {
           setSupported(true);
+          window.addEventListener('deviceorientation', (event: DeviceOrientationEvent) => {
+            if (event.alpha !== null) {
+              setCompassData({
+                heading: event.alpha,
+                accuracy: event.webkitCompassAccuracy || 0,
+              });
+            }
+          });
         }
       } catch (error) {
         console.error('Permission request failed:', error);
@@ -56,5 +58,5 @@ export const useDeviceOrientation = () => {
     }
   };
 
-  return { compassData, supported, requestPermission };
+  return { compassData, supported, requestPermission, permissionRequested };
 };

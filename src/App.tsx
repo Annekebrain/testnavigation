@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Smartphone, AlertTriangle, Trophy } from 'lucide-react';
+import { Play, Smartphone, AlertTriangle, Trophy, MapPin } from 'lucide-react';
 import { useGeolocation } from './hooks/useGeolocation';
 import { useDeviceOrientation } from './hooks/useDeviceOrientation';
 import { GameStatus } from './components/GameStatus';
@@ -12,7 +12,7 @@ import { calculateDistance, calculateBearing, isNearLocation } from './utils/geo
 
 function App() {
   const { position, error, loading } = useGeolocation();
-  const { compassData, supported, requestPermission } = useDeviceOrientation();
+  const { compassData, supported, requestPermission, permissionRequested } = useDeviceOrientation();
   
   const [gameState, setGameState] = useState<GameState>({
     currentNodeIndex: 0,
@@ -23,6 +23,20 @@ function App() {
   });
 
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [debugInfo, setDebugInfo] = useState('');
+
+  // Debug information
+  useEffect(() => {
+    const info = [
+      `Loading: ${loading}`,
+      `Position: ${position ? 'Available' : 'None'}`,
+      `Error: ${error ? error.message : 'None'}`,
+      `Compass supported: ${supported}`,
+      `Permission requested: ${permissionRequested}`,
+      `Game started: ${gameState.gameStarted}`,
+    ].join('\n');
+    setDebugInfo(info);
+  }, [loading, position, error, supported, permissionRequested, gameState.gameStarted]);
 
   // Update user location
   useEffect(() => {
@@ -61,7 +75,15 @@ function App() {
   }, [position, gameState.gameStarted, gameState.currentNodeIndex, gameState.gameCompleted]);
 
   const startGame = async () => {
-    if (supported || (await requestPermission)) {
+    try {
+      // For iOS devices, request permission first
+      if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
+        await requestPermission();
+      }
+      setGameState(prev => ({ ...prev, gameStarted: true }));
+    } catch (error) {
+      console.error('Failed to start game:', error);
+      // Start anyway - compass might not be critical
       setGameState(prev => ({ ...prev, gameStarted: true }));
     }
   };
@@ -79,9 +101,12 @@ function App() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black flex items-center justify-center">
-        <div className="text-center">
+        <div className="text-center p-4">
           <div className="animate-spin w-12 h-12 border-4 border-cyan-400 border-t-transparent rounded-full mx-auto mb-4"></div>
           <p className="text-cyan-400 text-lg">Finding your location...</p>
+          <div className="mt-4 text-xs text-gray-400 whitespace-pre-line bg-black/30 p-3 rounded">
+            {debugInfo}
+          </div>
         </div>
       </div>
     );
@@ -103,6 +128,9 @@ function App() {
           >
             Retry
           </button>
+          <div className="mt-4 text-xs text-gray-400 whitespace-pre-line bg-black/30 p-3 rounded">
+            {debugInfo}
+          </div>
         </div>
       </div>
     );
@@ -131,6 +159,24 @@ function App() {
               <li>• Best played outdoors</li>
               <li>• Walk between locations to progress</li>
             </ul>
+          </div>
+
+          {/* Current location info */}
+          {position && (
+            <div className="bg-black/30 rounded-lg p-4 mb-4 border border-cyan-500/30">
+              <MapPin className="w-6 h-6 text-cyan-400 mx-auto mb-2" />
+              <p className="text-xs text-cyan-400">
+                Current Location: {position.coords.latitude.toFixed(6)}, {position.coords.longitude.toFixed(6)}
+              </p>
+              <p className="text-xs text-gray-400">
+                Accuracy: ±{position.coords.accuracy.toFixed(0)}m
+              </p>
+            </div>
+          )}
+
+          {/* Debug info */}
+          <div className="mb-4 text-xs text-gray-400 whitespace-pre-line bg-black/30 p-3 rounded">
+            {debugInfo}
           </div>
 
           <button
